@@ -2,9 +2,10 @@ frappe.ui.form.on("Employee Attendance Tool", {
 	refresh: function(frm) {
 		frm.disable_save();
 	},
-
+	
 	onload: function(frm) {
-		frm.set_value("date", frappe.datetime.get_today());
+		frm.doc.department = frm.doc.branch = frm.doc.company, frm.doc.attendance_type = "All";
+		//frm.set_value("date", frappe.datetime.get_today());
 		erpnext.employee_attendance_tool.load_employees(frm);
 	},
 
@@ -22,8 +23,12 @@ frappe.ui.form.on("Employee Attendance Tool", {
 
 	company: function(frm) {
 		erpnext.employee_attendance_tool.load_employees(frm);
-	}
+	},
 
+	attendance_type: function (frm) {
+		erpnext.employee_attendance_tool.load_employees(frm);
+	}
+	
 });
 
 
@@ -36,7 +41,10 @@ erpnext.employee_attendance_tool = {
 					date: frm.doc.date,
 					department: frm.doc.department,
 					branch: frm.doc.branch,
-					company: frm.doc.company
+					company: frm.doc.company,
+					attendance_type: frm.doc.attendance_type,
+					end_date: frm.doc.end_date
+
 				},
 				callback: function(r) {
 					if(r.message['unmarked'].length > 0) {
@@ -123,9 +131,11 @@ erpnext.EmployeeSelector = Class.extend({
 			</div>').appendTo($(this.wrapper));
 
 		var mark_employee_toolbar = $('<div class="col-sm-12 bottom-toolbar">\
-			<button class="btn btn-primary btn-mark-present btn-xs"></button>\
-			<button class="btn btn-default btn-mark-absent btn-xs"></button>\
-			<button class="btn btn-default btn-mark-half-day btn-xs"></button></div>')
+			<button class="btn btn-primary btn-mark-present btn-xs" style="display:none;" ></button>\
+			<button class="btn btn-default btn-mark-absent btn-xs" style="display:none;"></button>\
+			<button class="btn btn-default btn-mark-half-day btn-xs" style="display:none;"></button>\
+			<button class="btn btn-primary btn-mark-Process btn-xs"></button>\
+			</div>')
 
 		employee_toolbar.find(".btn-add")
 			.html(__('Check all'))
@@ -143,6 +153,32 @@ erpnext.EmployeeSelector = Class.extend({
 				$(me.wrapper).find('input[type="checkbox"]').each(function(i, check) {
 					if($(check).is(":checked")) {
 						check.checked = false;
+					}
+				});
+			});
+		// btn-mark-Process
+		mark_employee_toolbar.find(".btn-mark-Process")
+			.html(__('Attendence Processing'))
+			.on("click", function () {
+				var employee_present = [];
+				$(me.wrapper).find('input[type="checkbox"]').each(function (i, check) {
+					if ($(check).is(":checked")) {
+						employee_present.push(employee[i]);
+					}
+				});
+				frappe.call({
+					method: "erpnext.hr.doctype.employee_attendance_tool.employee_attendance_tool.attendence_proccessing",
+					args: {
+						"employee_list": employee_present,
+						"status": "Present",
+						"start_date": frm.doc.date,
+						"end_date": frm.doc.end_date,
+						"company": frm.doc.company
+					},
+
+					callback: function (r) {
+						erpnext.employee_attendance_tool.load_employees(frm);
+
 					}
 				});
 			});
@@ -166,6 +202,7 @@ erpnext.EmployeeSelector = Class.extend({
 					},
 
 					callback: function(r) {
+						frappe.show_alert('Success')
 						erpnext.employee_attendance_tool.load_employees(frm);
 
 					}

@@ -29,8 +29,8 @@ frappe.ui.form.on('Employee Onboarding', {
 					method: "erpnext.hr.doctype.employee_onboarding.employee_onboarding.make_employee",
 					frm: frm
 				});
-			}, __('Create'));
-			frm.page.set_inner_btn_group_as_primary(__('Create'));
+			}, __("Make"));
+			frm.page.set_inner_btn_group_as_primary(__("Make"));
 		}
 		if (frm.doc.docstatus === 1 && frm.doc.project) {
 			frappe.call({
@@ -60,11 +60,12 @@ frappe.ui.form.on('Employee Onboarding', {
 				},
 				callback: function(r) {
 					if (r.message) {
-						r.message.forEach((d) => {
-							frm.add_child("activities", d);
+						$.each(r.message, function(i, d) {
+							var row = frappe.model.add_child(frm.doc, "Employee Boarding Activity", "activities");
+							$.extend(row, d);
 						});
-						refresh_field("activities");
 					}
+					refresh_field("activities");
 				}
 			});
 		}

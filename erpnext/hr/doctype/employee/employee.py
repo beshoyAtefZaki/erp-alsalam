@@ -3,19 +3,22 @@
 
 from __future__ import unicode_literals
 import frappe
+from dateutil.relativedelta import relativedelta
 
-from frappe.utils import getdate, validate_email_address, today, add_years, format_datetime
+from frappe.utils import getdate, validate_email_add, today, add_years, format_datetime, add_days, cstr
 from frappe.model.naming import set_name_by_naming_series
 from frappe import throw, _, scrub
 from frappe.permissions import add_user_permission, remove_user_permission, \
 	set_user_permission_if_allowed, has_permission
+from datetime import datetime
 from frappe.model.document import Document
 from erpnext.utilities.transaction_base import delete_events
 from frappe.utils.nestedset import NestedSet
-from erpnext.hr.doctype.job_offer.job_offer import get_staffing_plan_detail
+from frappe.utils.background_jobs import enqueue
 
 class EmployeeUserDisabledError(frappe.ValidationError): pass
 class EmployeeLeftValidationError(frappe.ValidationError): pass
+class OverlapError(frappe.ValidationError): pass
 
 class Employee(NestedSet):
 	nsm_parent_field = 'reports_to'
@@ -44,8 +47,13 @@ class Employee(NestedSet):
 		self.validate_date()
 		self.validate_email()
 		self.validate_status()
+		self.validate_employee_leave_approver()
 		self.validate_reports_to()
 		self.validate_preferred_email()
+		self.validate_stop_working_date()
+		self.validate_medical_data()
+		#self.validate_resident_data()
+		self.validate_attendance_data()
 		if self.job_applicant:
 			self.validate_onboarding_process()
 
@@ -56,6 +64,8 @@ class Employee(NestedSet):
 			if existing_user_id:
 				remove_user_permission(
 					"Employee", self.name, existing_user_id)
+		if self.finger_print_number:
+		    self.validate_duplicate_finger_print_number()
 
 	def set_employee_name(self):
 		self.employee_name = ' '.join(filter(lambda x: x, [self.first_name, self.middle_name, self.last_name]))
@@ -68,6 +78,119 @@ class Employee(NestedSet):
 		self.validate_for_enabled_user_id(data.get("enabled", 0))
 		self.validate_duplicate_user_id()
 
+	def validate_stop_working_date(self):
+		stop_working_dict = self.get("stop_working_data")
+		for item in stop_working_dict:
+			tem_pdate = add_days(datetime.strptime(item.start_date, '%Y-%m-%d'), 180)
+			if (datetime.strptime(item.start_date, '%Y-%m-%d') > datetime.strptime(item.end_date, '%Y-%m-%d')):
+				frappe.throw(_("Start Date should not exceed End Date"), title=_("STOP WORKING DATA"))
+			elif (datetime.strptime(item.end_date, '%Y-%m-%d') > tem_pdate):
+				frappe.throw(_("End Date should not exceed than 180 day"), title=_("STOP WORKING DATA"))
+			elif (item.cut_percentage != ""):
+				if (float(item.cut_percentage) > 50):
+					frappe.throw(_("Cut percentage should not exceed than 50%"), title=_("STOP WORKING DATA"))
+
+			existing = self.check_stop_working_dates(item)
+			if existing:
+				frappe.throw(_("You have overlap in Row {0}: Start From and End Date of {1} ")
+							 .format(item.idx, self.name), OverlapError, title=_("STOP WORKING DATA"))
+
+	def validate_medical_data(self):
+		employee_medical_documents = self.get("employee_medical_documents")
+		for item in employee_medical_documents:
+			if item.start_date and item.end_date:
+				if (datetime.strptime(item.start_date, '%Y-%m-%d') > datetime.strptime(item.end_date, '%Y-%m-%d')):
+					frappe.throw(_("Start Date  should not exceed End Date"), title=_("MEDICAL DOCUMENTS"))
+			existing = self.check_medical_data_dates(item)
+			if existing:
+				frappe.throw(_("You have overlap in Row {0}: Start Date and End Date of {1} ")
+							 .format(item.idx, self.name), OverlapError, title=_("MEDICAL DOCUMENTS"))
+
+	def check_medical_data_dates(self, item):
+		# check internal overlap
+		for employee_medical_document in self.employee_medical_documents:
+			# end_date = employee_medical_document.end_date
+			if not employee_medical_document.end_date:
+				if item.idx != employee_medical_document.idx and (employee_medical_document.start_date < item.end_date):
+					return self
+
+			if (item.idx != employee_medical_document.idx) and employee_medical_document.end_date and (
+					(
+							item.start_date > employee_medical_document.start_date and item.start_date < employee_medical_document.end_date) or
+					(
+							item.end_date > employee_medical_document.start_date and item.end_date < employee_medical_document.end_date) or
+					(
+							item.start_date <= employee_medical_document.start_date and item.end_date >= employee_medical_document.end_date)):
+				return self
+
+	def check_stop_working_dates(self, item):
+		# check internal overlap
+		for stop_working in self.stop_working_data:
+
+			if item.idx != stop_working.idx and (
+					(
+							item.start_date > stop_working.start_date and item.start_date < stop_working.end_date) or
+					(
+							item.end_date > stop_working.start_date and item.end_date < stop_working.end_date) or
+					(
+							item.start_date <= stop_working.start_date and item.end_date >= stop_working.end_date)):
+				return self
+
+	def validate_resident_data(self):
+		employee_resident_data = self.get("employee_resident_data")
+		for item in employee_resident_data:
+			if (datetime.strptime(item.release_start_date, '%Y-%m-%d') > datetime.strptime(item.release_end_date,
+																						   '%Y-%m-%d')):
+				frappe.throw(_("Release Start Date should not exceed Release End Date"), title=_("RESIDENT DATA"))
+
+			existing = self.check_resident_dates(item)
+			if existing:
+				frappe.throw(_("You have overlap in Row {0}: Release Start Date and Release End Date of {1} ")
+							 .format(item.idx, self.name), OverlapError, title=_("RESIDENT DATA"))
+
+	def validate_attendance_data(self):
+		employee_attendance_data = self.get("employee_attendance_data")
+		if employee_attendance_data:
+			for item in employee_attendance_data:
+				period_start_date = frappe.db.get_value("Attendance Period", {"period_name": item.attendance_period},
+														"start_date")
+				period_end_date = frappe.db.get_value("Attendance Period", {"period_name": item.attendance_period},
+													  "end_date")
+
+				if (datetime.strptime(item.start_date, '%Y-%m-%d') < datetime.strptime(cstr(period_start_date),
+																					   '%Y-%m-%d')):
+					frappe.throw(_("Start Date should not be before Period Start Date"), title=_("ATTENDANCE DATA"))
+
+				if item.end_date:
+					if (datetime.strptime(item.end_date, '%Y-%m-%d') > datetime.strptime(cstr(period_end_date),
+																						 '%Y-%m-%d')):
+						frappe.throw(_("End Date should not exceed Period End Date"), title=_("ATTENDANCE DATA"))
+
+					if (datetime.strptime(item.start_date, '%Y-%m-%d') > datetime.strptime(item.end_date, '%Y-%m-%d')):
+						frappe.throw(_("Start Date should not exceed End Date"), title=_("ATTENDANCE DATA"))
+
+				existing = self.check_attendance_dates(item)
+				if existing:
+					frappe.throw(_("You have overlap in Row {0}: Start Date and  End Date of {1} ")
+								 .format(item.idx, self.name), OverlapError, title=_("ATTENDANCE DATA"))
+
+	def check_attendance_dates(self, item):
+		# check internal overlap
+		for attendance_data in self.employee_attendance_data:
+			# end_date = attendance_data.end_date
+			if not attendance_data.end_date:
+				if item.idx != attendance_data.idx and (attendance_data.start_date < item.end_date):
+					return self
+
+			if (item.idx != attendance_data.idx) and attendance_data.end_date and (
+					(
+							item.start_date > attendance_data.start_date and item.start_date < attendance_data.end_date) or
+					(
+							item.end_date > attendance_data.start_date and item.end_date < attendance_data.end_date) or
+					(
+							item.start_date <= attendance_data.start_date and item.end_date >= attendance_data.end_date)):
+				return self
+
 	def update_nsm_model(self):
 		frappe.utils.nestedset.update_nsm(self)
 
@@ -76,19 +199,10 @@ class Employee(NestedSet):
 		if self.user_id:
 			self.update_user()
 			self.update_user_permissions()
-		self.reset_employee_emails_cache()
 
 	def update_user_permissions(self):
 		if not self.create_user_permission: return
 		if not has_permission('User Permission', ptype='write', raise_exception=False): return
-
-		employee_user_permission_exists = frappe.db.exists('User Permission', {
-			'allow': 'Employee',
-			'for_value': self.name,
-			'user': self.user_id
-		})
-
-		if employee_user_permission_exists: return
 
 		employee_user_permission_exists = frappe.db.exists('User Permission', {
 			'allow': 'Employee',
@@ -160,9 +274,9 @@ class Employee(NestedSet):
 
 	def validate_email(self):
 		if self.company_email:
-			validate_email_address(self.company_email, True)
+			validate_email_add(self.company_email, True)
 		if self.personal_email:
-			validate_email_address(self.personal_email, True)
+			validate_email_add(self.personal_email, True)
 
 	def validate_status(self):
 		if self.status == 'Left':
@@ -192,6 +306,18 @@ class Employee(NestedSet):
 			throw(_("User {0} is already assigned to Employee {1}").format(
 				self.user_id, employee[0]), frappe.DuplicateEntryError)
 
+	def validate_duplicate_finger_print_number(self):
+		employee = frappe.db.sql_list("""select name from `tabEmployee` where
+	        finger_print_number=%s and status='Active' and name!=%s""", (self.finger_print_number, self.name))
+		if employee:
+			throw(_("Finger Print Number {0} is already assigned to Employee {1}").format(
+				self.finger_print_number, employee[0]), frappe.DuplicateEntryError)
+
+	def validate_employee_leave_approver(self):
+		for l in self.get("leave_approvers")[:]:
+			if "Leave Approver" not in frappe.get_roles(l.leave_approver):
+				frappe.get_doc("User", l.leave_approver).add_roles("Leave Approver")
+
 	def validate_reports_to(self):
 		if self.reports_to == self.name:
 			throw(_("Employee cannot report to himself."))
@@ -214,15 +340,6 @@ class Employee(NestedSet):
 			doc = frappe.get_doc("Employee Onboarding", employee_onboarding[0].name)
 			doc.validate_employee_creation()
 			doc.db_set("employee", self.name)
-
-	def reset_employee_emails_cache(self):
-		prev_doc = self.get_doc_before_save() or {}
-		cell_number = self.get('cell_number')
-		prev_number = prev_doc.get('cell_number')
-		if (cell_number != prev_number or
-			self.get('user_id') != prev_doc.get('user_id')):
-			frappe.cache().hdel('employees_with_number', cell_number)
-			frappe.cache().hdel('employees_with_number', prev_number)
 
 def get_timeline_data(doctype, name):
 	'''Return timeline for attendance'''
@@ -309,6 +426,16 @@ def get_birthday_reminder_message(employee, employee_names):
 		message = "Today your colleagues are celebrating their birthdays \U0001F382<br><ul><strong><li> " + message +"</li></strong></ul>"
 
 	return message
+def get_HR_Users():
+    return frappe.db.sql_list("""
+    		SELECT parent FROM `tabHas Role` WHERE `role` ='HR User' and `parenttype` = 'user' and parent <> 'Administrator'
+    		""")
+
+
+def get_employees_resident_data(resident_data_reminder):
+    return frappe.db.sql_list("""select parent
+		from `tabResident Data` where DATEDIFF(release_end_date,CURDATE() ) <= (%(day)s) and DATEDIFF(release_end_date,CURDATE() ) >= 0
+		""", {"day": resident_data_reminder})
 
 
 def get_employees_who_are_born_today():
@@ -338,12 +465,12 @@ def get_holiday_list_for_employee(employee, raise_exception=True):
 
 	return holiday_list
 
-def is_holiday(employee, date=None, raise_exception=True):
+def is_holiday(employee, date=None):
 	'''Returns True if given Employee has an holiday on the given date
 	:param employee: Employee `name`
 	:param date: Date to check. Will check for today if None'''
 
-	holiday_list = get_holiday_list_for_employee(employee, raise_exception)
+	holiday_list = get_holiday_list_for_employee(employee)
 	if not date:
 		date = today()
 
@@ -391,6 +518,18 @@ def create_user(employee, user = None, email=None):
 	user.insert()
 	return user.name
 
+@frappe.whitelist()
+def create_position(designation, department):
+
+    position = frappe.new_doc("Positions")
+    position.update({
+        "designation": designation,
+        "department":  department
+    })
+    position.insert()
+    return position.name
+
+
 def get_employee_emails(employee_list):
 	'''Returns list of employee emails either based on user_id or company_email'''
 	employee_emails = []
@@ -403,6 +542,53 @@ def get_employee_emails(employee_list):
 		if email:
 			employee_emails.append(email)
 	return employee_emails
+
+
+@frappe.whitelist()
+def get_unused_position(doctype, txt, searchfield, start, page_len, filters):
+	from frappe.desk.reportview import get_match_cond, get_filters_cond
+	conditions = []
+
+	if not page_len:
+		return frappe.db.sql("""
+                select `name`
+                    from tabPositions
+                    where `status`='Active'
+                    and name not in (select position  from tabEmployee where position is not NULL)
+                    and ({key} like %(txt)s)
+                    {fcond} {mcond}
+                order by
+                    if(locate(%(_txt)s, name), locate(%(_txt)s, name), 99999) desc """.format(**{
+			'key': searchfield,
+			'fcond': get_filters_cond(doctype, filters, conditions),
+			'mcond': get_match_cond(doctype)
+		}), {
+								 'txt': "%%%s%%" % txt,
+								 '_txt': txt.replace("%", ""),
+							 })
+	else:
+		return frappe.db.sql("""
+                select `name`
+                    from tabPositions
+                    where `status`='Active'
+                    and name not in (select position  from tabEmployee where position is not NULL)
+                    and ({key} like %(txt)s)
+                    {fcond} {mcond}
+                order by
+                    if(locate(%(_txt)s, name), locate(%(_txt)s, name), 99999) desc
+
+                limit %(start)s, %(page_len)s""".format(**{
+			'key': searchfield,
+			'fcond': get_filters_cond(doctype, filters, conditions),
+			'mcond': get_match_cond(doctype)
+		}), {
+								 'txt': "%%%s%%" % txt,
+								 '_txt': txt.replace("%", ""),
+								 'start': start,
+								 'page_len': page_len
+							 })
+
+
 
 @frappe.whitelist()
 def get_children(doctype, parent=None, company=None, is_root=False, is_tree=False):
@@ -427,6 +613,38 @@ def get_children(doctype, parent=None, company=None, is_root=False, is_tree=Fals
 
 	return employees
 
+
+@frappe.whitelist()
+def get_retirement_date_for_gender(date_of_birth=None, gender=None):
+    ret = {}
+    if date_of_birth and gender:
+        try:
+            if gender == 'Male':
+                retirement_age = int(frappe.db.get_single_value("HR Settings", "retirement_age_for_male") or 60)
+            elif gender == 'Female':
+                retirement_age = int(frappe.db.get_single_value("HR Settings", "retirement_age_for_female") or 55)
+            dt = add_years(getdate(date_of_birth), retirement_age)
+            ret = {'date_of_retirement': dt.strftime('%Y-%m-%d')}
+        except ValueError:
+            # invalid date
+            ret = {}
+
+    return ret
+
+
+@frappe.whitelist()
+def get_test_period_end_date(date_of_joining=None):
+    ret = {}
+    if date_of_joining:
+        try:
+            test_days = int(frappe.db.get_single_value("HR Settings", "test_period") or 90)
+            dt = add_days(getdate(date_of_joining), test_days)
+            ret = {'test_period_end_date': dt.strftime('%Y-%m-%d')}
+        except ValueError:
+            # invalid date
+            ret = {}
+
+    return ret
 
 def on_doctype_update():
 	frappe.db.add_index("Employee", ["lft", "rgt"])

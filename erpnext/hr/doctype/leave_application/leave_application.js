@@ -2,9 +2,29 @@
 // License: GNU General Public License v3. See license.txt
 
 cur_frm.add_fetch('employee','employee_name','employee_name');
+cur_frm.add_fetch('employee','gender','gender');
 cur_frm.add_fetch('employee','company','company');
+cur_frm.add_fetch('leave_type','vacation_type','vacation_type');
 
 frappe.ui.form.on("Leave Application", {
+	encash_leaves:function(frm){
+		if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type && frm.doc.to_date && frm.doc.encash_leaves) {
+			return frappe.call({
+				method: "erpnext.hr.doctype.leave_allocation.leave_allocation.get_carry_forwarded_leaves",
+				args: {
+					employee: frm.doc.employee,
+					date: frm.doc.to_date,
+					leave_type: frm.doc.leave_type,
+					till_now:true
+				},
+				callback: function(r) {
+					if (!r.exc && r.message) {
+						frm.set_value('total_leaves', r.message);
+					}
+				}
+			})
+		}
+	},
 	setup: function(frm) {
 		frm.set_query("leave_approver", function() {
 			return {
@@ -13,6 +33,17 @@ frappe.ui.form.on("Leave Application", {
 					employee: frm.doc.employee,
 					doctype: frm.doc.doctype
 				}
+			};
+		});
+
+		frm.set_query("leave_type", function() {
+			return {
+				filters:
+					 [
+					 	[
+					 		"for_gender", "in", [cur_frm.doc.gender,""]
+						]
+					 ]
 			};
 		});
 
@@ -49,7 +80,7 @@ frappe.ui.form.on("Leave Application", {
 				async: false,
 				args: {
 					employee: frm.doc.employee,
-					date: frm.doc.from_date || frm.doc.posting_date
+					date: frm.doc.posting_date
 				},
 				callback: function(r) {
 					if (!r.exc && r.message['leave_allocation']) {
@@ -60,8 +91,9 @@ frappe.ui.form.on("Leave Application", {
 					}
 				}
 			});
+
 			$("div").remove(".form-dashboard-section");
-			frm.dashboard.add_section(
+			let section = frm.dashboard.add_section(
 				frappe.render_template('leave_application_dashboard', {
 					data: leave_details
 				})
@@ -114,7 +146,6 @@ frappe.ui.form.on("Leave Application", {
 	},
 
 	from_date: function(frm) {
-		frm.trigger("make_dashboard");
 		frm.trigger("half_day_datepicker");
 		frm.trigger("calculate_total_days");
 	},
@@ -137,14 +168,51 @@ frappe.ui.form.on("Leave Application", {
 		})
 	},
 
+	// get_leave_balance: function(frm) {
+	// 	if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type && frm.doc.from_date) {
+	// 		return frappe.call({
+	// 			method: "erpnext.hr.doctype.leave_application.leave_application.get_leave_balance_on",
+	// 			args: {
+	// 				employee: frm.doc.employee,
+	// 				date: frm.doc.from_date,
+	// 				leave_type: frm.doc.leave_type,
+	// 				consider_all_leaves_in_the_allocation_period: true
+	// 			},
+	// 			callback: function(r) {
+	// 				if (!r.exc && r.message) {
+	// 					frm.set_value('leave_balance', r.message);
+	// 				}
+	// 				else {
+	// 					frm.set_value('leave_balance', "0");
+	// 				}
+	// 			}
+	// 		});
+	// 	}
+	// },
+
 	get_leave_balance: function(frm) {
-		if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type && frm.doc.from_date && frm.doc.to_date) {
+		if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type && frm.doc.from_date && frm.doc.vacation_type=='Sick Vacation'){
+			return frappe.call({
+				method: "erpnext.hr.doctype.leave_application.leave_application.get_leave_balance_on_sick_type",
+				args: {
+					employee: frm.doc.employee,
+					date: {"from_date":frm.doc.from_date,"to_date":frm.doc.to_date},
+					leave_type: frm.doc.leave_type,
+					consider_all_leaves_in_the_allocation_period: true
+				},
+				callback: function(r) {
+					if (!r.exc && r.message) {
+						frm.set_value('leave_balance', r.message);
+					}
+				}
+			});
+		}
+		else if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type && frm.doc.from_date) {
 			return frappe.call({
 				method: "erpnext.hr.doctype.leave_application.leave_application.get_leave_balance_on",
 				args: {
 					employee: frm.doc.employee,
 					date: frm.doc.from_date,
-					to_date: frm.doc.to_date,
 					leave_type: frm.doc.leave_type,
 					consider_all_leaves_in_the_allocation_period: true
 				},

@@ -36,6 +36,7 @@ frappe.ui.form.on('Salary Component', {
 		if(frm.doc.type=="Deduction"){
 			frm.set_value("is_tax_applicable", 0);
 			frm.set_value("is_flexible_benefit", 0);
+			frm.set_value("include_in_penality_sum", 0);
 		}
 	},
 	variable_based_on_taxable_salary: function(frm) {

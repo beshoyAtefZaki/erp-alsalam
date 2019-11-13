@@ -12,6 +12,7 @@ from erpnext.controllers.accounts_controller import AccountsController
 class Loan(AccountsController):
 	def validate(self):
 		validate_repayment_method(self.repayment_method, self.loan_amount, self.monthly_repayment_amount, self.repayment_periods)
+		self.get_employee_financial_data()
 		self.set_missing_fields()
 		self.make_repayment_schedule()
 		self.set_repayment_period()
@@ -30,9 +31,112 @@ class Loan(AccountsController):
 		if self.repayment_method == "Repay Over Number of Periods":
 			self.monthly_repayment_amount = get_monthly_repayment_amount(self.repayment_method, self.loan_amount, self.rate_of_interest, self.repayment_periods)
 
+		# check the monthly maximum_loan_amount_cut which get from hr setting with default 10%
+		if self.monthly_repayment_amount > self.maximum_loan_amount_cut:
+			frappe.throw(_("Sorry...you exceeded the maximum loan amount cut  " + str(
+				self.maximum_loan_amount_cut) + " and your monthly repayment amount is " + str(
+				self.monthly_repayment_amount)))
+
 		if self.status == "Repaid/Closed":
 			self.total_amount_paid = self.total_payment
 
+	def get_monthly_repayment_amount(repayment_method, loan_amount, rate_of_interest, repayment_periods):
+		if rate_of_interest:
+			monthly_interest_rate = flt(rate_of_interest) / (12 * 100)
+			monthly_repayment_amount = math.ceil((loan_amount * monthly_interest_rate *
+												  (1 + monthly_interest_rate) ** repayment_periods) \
+												 / ((1 + monthly_interest_rate) ** repayment_periods - 1))
+		else:
+			monthly_repayment_amount = math.ceil(flt(loan_amount) / repayment_periods)
+		return monthly_repayment_amount
+
+	def get_employee_financial_data(self):
+		self.base = 0.0
+		self.maximum_loan_amount_cut = 0.0
+		self.total_deserved_amount = 0.0
+		self.salary_component_dict = {}
+		self.employee = self.applicant
+		if self.employee:
+			employee_Dict = frappe.db.get_value("Employee", self.employee,
+												["name", "resignation_letter_date", "designation", "status",
+												 "department", "relieving_date"], as_dict=1)
+			if employee_Dict:
+				employeename = employee_Dict.name
+				resignation_letter_date = employee_Dict.resignation_letter_date
+				designation = employee_Dict.designation
+				status = employee_Dict.status
+				department = employee_Dict.department
+				relieving_date = employee_Dict.relieving_date
+
+			if resignation_letter_date or relieving_date or status == "Left":
+				frappe.throw(_("Sorry....this is employee is going to leave or already left"), "Employee Status")
+
+		Salary_Structure_Dict = frappe.db.sql(
+			"""
+			SELECT SSE.base,SD.amount_based_on_formula,
+				SD.formula,SD.amount,
+				SD.`condition`,SD.abbr,SD.salary_component
+				FROM	`tabSalary Structure Assignment`  as SSE
+					INNER join 	
+				`tabSalary Structure` as SS
+					on SS.`name` = SSE.salary_structure
+					INNER JOIN 
+					`tabSalary Detail` as SD
+					on SD.parent = SS.`name` 
+					and SD.parentfield='earnings'
+					and SD.docstatus= '1'
+					and SS.is_active='Yes'
+					and %s >=  SSE.from_date
+					and SSE.employee=%s
+					and SS.docstatus='1'
+					;
+			"""
+			, (self.posting_date, self.employee), as_dict=1,debug=False
+		)
+
+		if Salary_Structure_Dict:
+			for item in Salary_Structure_Dict:
+				self.base = item["base"]
+				self.salary_component_dict["base"] = item["base"]
+				if item["amount_based_on_formula"] == 1:
+					try:
+						condition = item["condition"].strip() if item["condition"] else None
+						if condition:
+							if not frappe.safe_eval(condition, None, self.salary_component_dict):
+								return None
+
+						formula = item["formula"].strip() if item["formula"] else None
+						if formula:
+							amount = frappe.safe_eval(formula, None, self.salary_component_dict)
+							self.salary_component_dict[item["abbr"]] = amount
+							self.total_deserved_amount += amount
+
+					except NameError as err:
+						frappe.throw(_("Name error: {0}".format(err)))
+					except SyntaxError as err:
+						frappe.throw(
+							_("Syntax error in formula or condition: {0}".format(err)))
+					except Exception as e:
+						frappe.throw(_("Error in formula or condition: {0}".format(e)))
+						raise
+				else:
+					self.total_deserved_amount += float(item["amount"])
+
+		if self.total_deserved_amount > 0:
+			if int(frappe.db.get_single_value("HR Settings", "maximum_loan_amount_cut") or 0):
+				self.maximum_loan_amount_cut = float(float(frappe.db.get_single_value("HR Settings",
+																					  "maximum_loan_amount_cut")) / 100) * self.total_deserved_amount
+			else:
+				self.maximum_loan_amount_cut = 0.1 * self.total_deserved_amount
+
+		# msgprint(str(self.maximum_loan_amount_cut))
+		# msgprint(str(self.total_deserved_amount))
+		# frappe.throw("not saved")
+
+		else:
+			frappe.throw(_("Sorry....this is employee has no salary structure "), "Employee Salary Structure ")
+
+		return self.maximum_loan_amount_cut
 
 	def make_jv_entry(self):
 		self.check_permission('write')

@@ -1,0 +1,205 @@
+{
+ "autoname": "contract_number.#####",
+ "creation": "2019-11-12 12:25:52.942050",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "contract_number",
+  "employee",
+  "contract_type",
+  "employee_full_name",
+  "employee_nationality",
+  "company",
+  "column_break_6",
+  "date_of_agreement",
+  "data_7",
+  "contract_start_date",
+  "contratc_end_date",
+  "salary_detail_section",
+  "earnings",
+  "deductions",
+  "total_earnings",
+  "total_deductions",
+  "terms_of_contract_section",
+  "plane_ticket",
+  "health_insurance",
+  "yearly_vacation",
+  "contract_terms",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "contract_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Contract Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "contract_type",
+   "fieldtype": "Select",
+   "label": "Contract Type ",
+   "options": "\u0639\u0642\u062f \u0639\u0645\u0644 \u0623\u062c\u0646\u0628\u064a\n\u0639\u0642\u062f \u0639\u0645\u0644 \u0633\u0639\u0648\u062f\u0649",
+   "reqd": 1
+  },
+  {
+   "fieldname": "date_of_agreement",
+   "fieldtype": "Date",
+   "label": "Date of agreement",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "employee_full_name",
+   "fieldtype": "Data",
+   "label": "Employee Full Name ",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "employee_nationality",
+   "fieldtype": "Link",
+   "label": "Employee Nationality",
+   "options": "Nationality",
+   "read_only": 1
+  },
+  {
+   "fieldname": "data_7",
+   "fieldtype": "Int",
+   "label": "Contract Duration",
+   "reqd": 1
+  },
+  {
+   "fieldname": "contract_start_date",
+   "fieldtype": "Date",
+   "label": "Contract Start Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "contratc_end_date",
+   "fieldtype": "Date",
+   "label": "Contratc End Date",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "salary_detail_section",
+   "fieldtype": "Section Break",
+   "label": "Salary Detail"
+  },
+  {
+   "fieldname": "earnings",
+   "fieldtype": "Table",
+   "label": "Earnings",
+   "options": "Salary Detail"
+  },
+  {
+   "fieldname": "deductions",
+   "fieldtype": "Table",
+   "label": "Deductions",
+   "options": "Salary Detail"
+  },
+  {
+   "fieldname": "column_break_6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "terms_of_contract_section",
+   "fieldtype": "Section Break",
+   "label": "Terms of contract"
+  },
+  {
+   "default": "0",
+   "fieldname": "plane_ticket",
+   "fieldtype": "Check",
+   "label": "Plane Ticket"
+  },
+  {
+   "fieldname": "yearly_vacation",
+   "fieldtype": "Int",
+   "label": "Yearly Vacation"
+  },
+  {
+   "fieldname": "contract_terms",
+   "fieldtype": "Table",
+   "label": "Contract Terms",
+   "options": "Contract Terms"
+  },
+  {
+   "default": "0",
+   "fieldname": "health_insurance",
+   "fieldtype": "Check",
+   "label": "health insurance"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Employee contract",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_earnings",
+   "fieldtype": "Currency",
+   "label": " Total Earnings"
+  },
+  {
+   "fieldname": "total_deductions",
+   "fieldtype": "Currency",
+   "label": "Total Deductions"
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee"
+  }
+ ],
+ "is_submittable": 1,
+ "modified": "2019-11-12 16:06:54.963339",
+ "modified_by": "Administrator",
+ "module": "HR",
+ "name": "Employee contract",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "set_user_permissions": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

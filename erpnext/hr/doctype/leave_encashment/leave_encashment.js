@@ -3,6 +3,7 @@
 
 frappe.ui.form.on('Leave Encashment', {
 	setup: function(frm) {
+		frappe.encashment_amount = 0.0;
 		frm.set_query("leave_type", function() {
 			return {
 				filters: {
@@ -22,6 +23,36 @@ frappe.ui.form.on('Leave Encashment', {
 	},
 	leave_type: function(frm) {
 		frm.trigger("get_leave_details_for_encashment");
+	},
+	encashment_amount:function(frm){
+		if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type) {
+				return frappe.call({
+						method: "get_leave_details_for_encashment",
+						args: {
+							'current_days':frm.doc.encashable_days,
+							'encashment_amount':frm.doc.encashment_amount
+						},
+						doc: frm.doc,
+						callback: function(r) {
+						frm.refresh_fields();
+						}
+			});
+		}
+	},
+	encashable_days: function(frm) {
+		// var current_days = frm.doc.encashable_days
+		if(frm.doc.docstatus==0 && frm.doc.employee && frm.doc.leave_type) {
+				return frappe.call({
+						method: "get_leave_details_for_encashment",
+						args: {
+							'current_days':frm.doc.encashable_days
+						},
+						doc: frm.doc,
+						callback: function(r) {
+						frm.refresh_fields();
+						}
+			});
+		}
 	},
 	encashment_date: function(frm) {
 		frm.trigger("get_leave_details_for_encashment");

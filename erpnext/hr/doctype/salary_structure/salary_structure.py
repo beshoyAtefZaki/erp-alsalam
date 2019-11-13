@@ -4,11 +4,12 @@
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import flt, cint, cstr
+from frappe.utils import flt, cint, cstr,getdate
 from frappe import _
 from frappe.model.mapper import get_mapped_doc
 from frappe.model.document import Document
 from six import iteritems
+from erpnext.hr.utils import set_employee_name
 
 class SalaryStructure(Document):
 	def validate(self):
