@@ -4,8 +4,8 @@
 
 from __future__ import unicode_literals
 import frappe
-from datetime import datetime , timedelta
-from dateutil.relativedelta import *
+import datetime
+from dateutil.relativedelta import relativedelta
 from frappe.model.document import Document
 
 class Employeecontract(Document):
@@ -18,4 +18,7 @@ class Employeecontract(Document):
 
 @frappe.whitelist()
 def get_contract_end_date(duration , start_date ):
-	return("hello")
+	# date = datetime.datetime.strptime(start_date, "%y-%m-%d")
+	date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+	end_date = date + relativedelta(months =+ int(duration))
+	return(end_date)
