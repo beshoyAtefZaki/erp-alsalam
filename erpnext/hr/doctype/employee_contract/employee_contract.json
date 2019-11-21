@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "contract_number",
+  "statuss",
   "employee",
   "contract_type",
   "employee_full_name",
@@ -23,7 +24,9 @@
   "total_deductions",
   "terms_of_contract_section",
   "plane_ticket",
+  "ticket",
   "health_insurance",
+  "health_insurance_grade",
   "yearly_vacation",
   "contract_terms",
   "amended_from"
@@ -32,7 +35,6 @@
   {
    "fieldname": "contract_number",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Contract Number",
    "reqd": 1
   },
@@ -59,6 +61,7 @@
   {
    "fieldname": "employee_full_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Employee Full Name ",
    "read_only": 1,
    "reqd": 1
@@ -86,6 +89,7 @@
    "fieldname": "contratc_end_date",
    "fieldtype": "Date",
    "label": "Contratc End Date",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -150,22 +154,49 @@
   {
    "fieldname": "total_earnings",
    "fieldtype": "Currency",
-   "label": " Total Earnings"
+   "label": " Total Earnings",
+   "read_only": 1
   },
   {
    "fieldname": "total_deductions",
    "fieldtype": "Currency",
-   "label": "Total Deductions"
+   "label": "Total Deductions",
+   "read_only": 1
   },
   {
    "fieldname": "employee",
    "fieldtype": "Link",
    "label": "Employee",
    "options": "Employee"
+  },
+  {
+   "depends_on": "eval:doc.plane_ticket==1",
+   "fieldname": "ticket",
+   "fieldtype": "Select",
+   "label": "Ticket ",
+   "options": "\u062f\u0631\u062c\u0629 \u0633\u064a\u0627\u062d\u064a\u0629\n\u062f\u0631\u062c\u0629 \u0623\u0648\u0644\u0649\n\u062f\u0631\u062c\u0629 \u0631\u062c\u0627\u0644 \u0627\u0644\u0627\u0639\u0645\u0627\u0644"
+  },
+  {
+   "depends_on": "eval:doc.health_insurance==1",
+   "fieldname": "health_insurance_grade",
+   "fieldtype": "Select",
+   "label": "Health Insurance Grade",
+   "options": "A\nB\nC"
+  },
+  {
+   "default": "Active",
+   "fieldname": "statuss",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_preview": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "\nActive\nTemporary Leave\nLeft",
+   "reqd": 1
   }
  ],
  "is_submittable": 1,
- "modified": "2019-11-12 16:06:54.963339",
+ "modified": "2019-11-20 14:56:10.629455",
  "modified_by": "Administrator",
  "module": "HR",
  "name": "Employee contract",
